@@ -9,6 +9,7 @@ import subprocess
 import time
 import shutil
 import glob
+import random
 
 
 class BackendError (Exception): pass
@@ -16,11 +17,12 @@ class BackendError (Exception): pass
 
 
 class Backend (object):
-    JOB_PREFIX = 'job_'
-    JOB_SUFFIX = '.sh'
-    COUNTER    = 0
-    WITHENV    = 'with-env'
-    GOODENV    = 'env.sh'
+    JOB_PREFIX     = 'job_'
+    JOB_SUFFIX     = '.sh'
+    WORKAREA_ID    = None
+    WORKAREA_RANGE = (0,9999)
+    WITHENV        = 'with-env'
+    GOODENV        = 'env.sh'
 
 
     def __init__(self, withenv=None, environment=None, workarea=None, overwrite_workarea=False):
@@ -38,7 +40,7 @@ class Backend (object):
 
         """
 
-        Backend.COUNTER += 1
+        Backend.WORKAREA_ID = random.randint(*Backend.WORKAREA_RANGE)
 
         if withenv and environment:
             self.withenv            = dict()
@@ -49,7 +51,7 @@ class Backend (object):
         self.workarea    = os.path.abspath(workarea or \
                                                ('workarea_' +
                                                 self.__class__.__name__ +
-                                                '-' + str(Backend.COUNTER)))
+                                                '-' + str(Backend.WORKAREA_ID)))
         self.overwrite_workarea = overwrite_workarea
 
     def setup(self):
