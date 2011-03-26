@@ -16,3 +16,13 @@ In python::
 	b = SGE()
 	b.submit(cmds)
 	b.wait(poll_interval = '2s', max_tries=float('inf'))
+
+
+In bash::
+
+    $ cat <<EOF>/tmp/test.in
+	hello
+	world
+	EOF
+
+	$ with-bs -W -P 2s /tmp/test.in echo
