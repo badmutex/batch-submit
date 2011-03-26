@@ -9,7 +9,6 @@ import subprocess
 import time
 import shutil
 import glob
-from optparse import OptionParser
 
 
 class BackendError (Exception): pass

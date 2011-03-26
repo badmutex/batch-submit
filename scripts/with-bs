@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+from optparse import OptionParser
+import batchsubmit as bs
+from pytools.tools import lazy_chunk
+import itertools
+
+__SUPPORTED_BACKENDS = set(['SGE'])
+
+
+def get_opts():
+    usage = '%prog [OPTIONS] <data file> command'
+
+    p = OptionParser(usage=usage)
+
+    p.add_option('-b','--backend',dest='backend',default='SGE',help='Specify which backend to use [SGE]')
+    p.add_option('-w','--with-env',dest='withenv',default=None,help='Environment wrapper [None]')
+    p.add_option('-e','--good-env',dest='goodenv',default=None,help='Environment to source [None]')
+    p.add_option('-c','--chunksize',dest='chunksize',type=int,default=1,help='Chunksize [1]')
+
+    p.add_option('-P','--poll-interval',dest='poll',default='1m',
+                 help='<value><unit> where <unit> is one of {s,m,h,d,w} [1m]')
+    p.add_option('-M','--max-tries',dest='maxtries',type=float,default=float('inf'),
+                 help='Maximum number of times to poll [infinity]')
+
+    p.add_option('-W','--wait',dest='wait',action='store_true',help='Wait for the batch job to complete before exiting')
+
+
+    opts, args    = p.parse_args()
+
+    if opts.backend not in __SUPPORTED_BACKENDS:
+        p.error('Unsupported backend: %s' % opts.backend)
+
+    if len(args) < 2:
+        p.error('Did you forget the <data file> and <command> ?')
+
+    if \
+            (not opts.withenv and opts.goodenv) or \
+            (opts.withenv and not opts.goodenv):
+        p.error('I need both --withenv and --goodenv')
+
+    opts.datafile = args[0]
+    opts.command  = args[1:]
+
+    return opts
+
+
+def make_commands(cmd, datafile, chunksize):
+    with open(datafile) as fd:
+        for chunk in lazy_chunk(itertools.imap(str.strip, fd),
+                               chunksize):
+            yield ' '.join(cmd + chunk)
+
+
+
+def main():
+    opts = get_opts()
+
+    backend = {'SGE' : bs.SGE
+               }[opts.backend]()
+
+    commands = make_commands(opts.command, opts.datafile, opts.chunksize)
+    backend.submit(commands)
+    if opts.wait:
+        backend.wait(poll_interval=opts.poll,
+                     max_tries=opts.maxtries)
+
+
+if __name__ == '__main__':
+    main()
