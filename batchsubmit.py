@@ -7,6 +7,7 @@ import os
 import os.path
 import subprocess
 import time
+import shutil
 from optparse import OptionParser
 
 
@@ -18,6 +19,9 @@ class Backend (object):
     JOB_PREFIX = 'job_'
     JOB_SUFFIX = '.sh'
     COUNTER    = 0
+    WITHENV    = 'with-env'
+    GOODENV    = 'env.sh'
+
 
     def __init__(self, withenv=None, environment=None, workarea=None, overwrite_workarea=False):
         """
@@ -36,8 +40,12 @@ class Backend (object):
 
         Backend.COUNTER += 1
 
-        self.withenv     = withenv or ''
-        self.environment = environment or ''
+        if withenv and environment:
+            self.withenv            = dict()
+            self.withenv['withenv'] = os.path.abspath(os.path.expanduser(withenv))
+            self.withenv['env']     = os.path.abspath(os.path.expanduser(environment))
+        else:
+            self.withenv = None
         self.workarea    = os.path.abspath(workarea or \
                                                ('workarea_' +
                                                 self.__class__.__name__ +
@@ -56,7 +64,14 @@ class Backend (object):
         elif not self.overwrite_workarea:
             raise BackendError, 'Workarea %s already exists' % self.workarea
 
+        print 'Setting up workarea:', self.workarea
+
         os.chmod(self.workarea, 0777) # drwxrwxrwx
+        if self.withenv:
+            withenv = os.path.join(self.workarea, Backend.WITHENV)
+            shutil.copy(self.withenv['withenv'], withenv)
+            os.chmod(withenv, 0755)
+            shutil.copy(self.withenv['env'], os.path.join(self.workarea, Backend.GOODENV))
 
 
     def create_jobs_generator(self, commands):
@@ -68,9 +83,13 @@ class Backend (object):
 
             jid = _jid + 1
 
-            cmd = (' '.join([self.withenv, self.environment]) + cmd) \
-                if self.withenv and self.environment else \
-                _cmd
+            if self.withenv:
+                cmd = './%(withenv)s %(goodenv)s %(cmd)s' % {'withenv' : Backend.WITHENV,
+                                                             'goodenv' : Backend.GOODENV,
+                                                             'cmd'     : _cmd}
+            else:
+                cmd = _cmd
+
 
             jobfile = os.path.join(self.workarea, '%s%d%s' % (Backend.JOB_PREFIX, jid, Backend.JOB_SUFFIX))
             with open(jobfile, 'w') as fd_job:
@@ -323,7 +342,9 @@ fi
 def example():
     cmds = ['echo hello','echo world;sleep 2']
 
-    b = SGE()
+    b = SGE(withenv='~/prototools.git/prototools/with-env.sh',
+            environment='~/prototools.git/env.sh',
+            overwrite_workarea=True)
     b.submit(cmds)
     b.wait(poll_interval = '2s', max_tries=float('inf'))
 
