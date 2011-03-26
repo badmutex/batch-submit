@@ -9,10 +9,11 @@ Condor.
 Example Usage
 -------------
 
-    >>>from batchsubmit import SGE
 
-    >>>cmds = ['echo hello','echo world']
+		from batchsubmit import SGE
 
-    >>>b = SGE()
-    >>>b.submit(cmds)
-    >>>b.wait(poll_interval = '2s', max_tries=float('inf'))
+		cmds = ['echo hello','echo world']
+
+		b = SGE()
+		b.submit(cmds)
+		b.wait(poll_interval = '2s', max_tries=float('inf'))
