@@ -8,6 +8,7 @@ import os.path
 import subprocess
 import time
 import shutil
+import glob
 from optparse import OptionParser
 
 
@@ -154,7 +155,9 @@ class Backend (object):
         return self.submit_jobs(jobfiles, **kwargs)
 
 class SGE (Backend):
-    JOBID_RE = r'(?P<jid>\d+)'
+    JOBID_RE  = r'(?P<jid>\d+)'
+    WORKER    = 'worker.sh'
+    SUBMITTER = 'submit.sh'
 
     def __init__(self, *args, **kws):
         Backend.__init__(self, *args, **kws)
@@ -238,7 +241,7 @@ class SGE (Backend):
 
         ### write the worker script ###
 
-        worker = os.path.join(self.workarea, 'worker.sh')
+        worker = os.path.join(self.workarea, SGE.WORKER)
         print 'Writing worker:', worker
         with open(worker, 'w') as fd_wrk:
             fd_wrk.write("""\
@@ -251,7 +254,7 @@ class SGE (Backend):
 
         ### write the script to submit to qsub ###
 
-        submitter = os.path.join(self.workarea, 'submit.sh')
+        submitter = os.path.join(self.workarea, SGE.SUBMITTER)
         print 'Writing submitter', submitter
         with open(submitter, 'w') as fd_sub:
             fd_sub.write("""\
@@ -325,6 +328,21 @@ fi
 """
 
 
+    def iglob_results(self):
+        """
+        returns a generator over the files created by SGE to captures STDOUT
+        """
+
+        if self.job_id is None:
+            raise BackendError, 'job id is None'
+
+        pattern = '%(workarea)s/%(worker)s*%(jid)d.*' % {'workarea' : self.workarea,
+                                                         'worker'   : SGE.WORKER,
+                                                         'jid'      : self.job_id }
+
+        print 'Globbing for:', pattern
+        return glob.iglob(pattern)
+
 
 
 # class BS (object):
@@ -340,13 +358,16 @@ fi
 
 
 def example():
-    cmds = ['echo hello','echo world;sleep 2']
+    cmds = ['echo hello','echo world']
 
-    b = SGE(withenv='~/prototools.git/prototools/with-env.sh',
-            environment='~/prototools.git/env.sh',
-            overwrite_workarea=True)
+    b = SGE(overwrite_workarea=True)
     b.submit(cmds)
     b.wait(poll_interval = '2s', max_tries=float('inf'))
+    results = list(b.iglob_results())
+    for p in results:
+        print 'Result file:', p
+        print open(p).read()
+
 
 
 
