@@ -57,7 +57,8 @@ def main():
     opts = get_opts()
 
     backend = {'SGE' : bs.SGE
-               }[opts.backend]()
+               }[opts.backend](withenv=opts.withenv,
+                               environment=opts.goodenv)
 
     commands = make_commands(opts.command, opts.datafile, opts.chunksize)
     backend.submit(commands)

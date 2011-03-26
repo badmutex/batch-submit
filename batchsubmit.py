@@ -70,6 +70,8 @@ class Backend (object):
 
         os.chmod(self.workarea, 0777) # drwxrwxrwx
         if self.withenv:
+            print 'Adding environment script:', self.withenv['env']
+
             withenv = os.path.join(self.workarea, Backend.WITHENV)
             shutil.copy(self.withenv['withenv'], withenv)
             os.chmod(withenv, 0755)
