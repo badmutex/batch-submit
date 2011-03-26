@@ -21,8 +21,8 @@ In python::
 In bash::
 
     $ cat <<EOF>/tmp/test.in
-	hello
-	world
-	EOF
+    hello
+    world
+    EOF
 
-	$ with-bs -W -P 2s /tmp/test.in echo
+    $ with-bs -W -P 2s /tmp/test.in echo
