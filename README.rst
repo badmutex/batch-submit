@@ -13,6 +13,6 @@ In python::
 
 	from batchsubmit import SGE
 	cmds = ['echo hello','echo world']
-    b = SGE()
-    b.submit(cmds)
-    b.wait(poll_interval = '2s', max_tries=float('inf'))
+	b = SGE()
+	b.submit(cmds)
+	b.wait(poll_interval = '2s', max_tries=float('inf'))
