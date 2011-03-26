@@ -9,7 +9,7 @@ Condor.
 Example Usage
 -------------
 
-	from batchsubmit import SGE
+    from batchsubmit import SGE
 
     cmds = ['echo hello','echo world']
 
