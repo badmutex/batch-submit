@@ -168,7 +168,11 @@ class SGE (Backend):
         sge_jid_re = kws.get('sge_jid_re', SGE.JOBID_RE)
         self.sge_jid_regex = re.compile(sge_jid_re)
 
-        self.job_id = None
+        self.running_job_id = None
+        self.job_ids = list()
+
+        self.worker    = os.path.join(self.workarea, SGE.WORKER)
+        self.submitter = os.path.join(self.workarea, SGE.SUBMITTER)
 
 
     def parse_time_units(self, duration):
@@ -190,6 +194,15 @@ class SGE (Backend):
         return sleeptime
 
 
+    def is_job_running(self):
+        with open('/dev/null', 'w') as devnull:
+            retcode = subprocess.call(('qstat -j %d' % self.running_job_id).split(),
+                                      stdout = devnull,
+                                      stderr = devnull)
+            running = retcode == 0
+            return running
+
+
     def wait(self, **kws):
         """
         Wait for an SGE job to finish. Raises a *BackendError* if *max_tries* is exceeded.
@@ -207,16 +220,15 @@ class SGE (Backend):
         sleeptime     = self.parse_time_units(poll_interval)
 
         tries = 0
-        print 'Checking SGE job id:', self.job_id, 'polling every', poll_interval, 'for', max_tries, 'attempts'
+
+        print 'Checking SGE job id:', \
+               self.running_job_id, 'polling every', poll_interval, 'for', max_tries, 'attempts'
         while True:
-            with open('/dev/null', 'w') as devnull:
-                retcode = subprocess.call(('qstat -j %d' % self.job_id).split(),
-                                          stdout = devnull,
-                                          stderr = devnull)
-            job_finished = not retcode == 0
+            job_finished = not self.is_job_running()
             print '[', tries, '] Is job finished?:', job_finished
 
             if job_finished:
+                self.running_job_id = None
                 break
             else:
                 tries += 1
@@ -244,22 +256,20 @@ class SGE (Backend):
 
         ### write the worker script ###
 
-        worker = os.path.join(self.workarea, SGE.WORKER)
-        print 'Writing worker:', worker
-        with open(worker, 'w') as fd_wrk:
+        print 'Writing worker:', self.worker
+        with open(self.worker, 'w') as fd_wrk:
             fd_wrk.write("""\
 #!/usr/bin/env bash
 ./%s${SGE_TASK_ID}%s
 """ % (Backend.JOB_PREFIX, Backend.JOB_SUFFIX))
-        os.chmod(worker, 0755)
+        os.chmod(self.worker, 0755)
 
 
 
         ### write the script to submit to qsub ###
 
-        submitter = os.path.join(self.workarea, SGE.SUBMITTER)
-        print 'Writing submitter', submitter
-        with open(submitter, 'w') as fd_sub:
+        print 'Writing submitter', self.submitter
+        with open(self.submitter, 'w') as fd_sub:
             fd_sub.write("""\
 #!/usr/bin/env bash
 qsub %(extra args)s -t %(begin)d-%(end)d:%(step)d %(worker)s
@@ -267,10 +277,10 @@ qsub %(extra args)s -t %(begin)d-%(end)d:%(step)d %(worker)s
         'begin'      : begin,
         'end'        : end,
         'step'       : step, 
-        'worker'     : os.path.basename(worker)})
-        os.chmod(submitter, 0755)
+        'worker'     : os.path.basename(self.worker)})
+        os.chmod(self.submitter, 0755)
 
-        return submitter
+        return self.submitter
 
 
 
@@ -279,20 +289,24 @@ qsub %(extra args)s -t %(begin)d-%(end)d:%(step)d %(worker)s
         *jobfiles*: paths to the work scripts
 
         Available key word arguments:
-        *begin*
-        *end*
-        *step*
-        *qsubargs*
+        *retry* :: Boolean
+        *begin* :: Int
+        *end*   :: Int
+        *step*  :: Int
+        *qsubargs* :: String
         """
 
-        submitter = self.prepare_scripts(jobfiles, **kws)
+        retry = kws.pop('retry', False)
+
+        if not retry:
+            self.prepare_scripts(jobfiles, **kws)
 
         ### submit the job and capture the SGE job id and return it ###
 
         pwd = os.getcwd()
         os.chdir(self.workarea)
         try:
-            output = subprocess.check_output(['./' + os.path.basename(submitter)])
+            output = subprocess.check_output(['./' + os.path.basename(self.submitter)])
             match  = self.sge_jid_regex.search(output)
 
             if match:
@@ -300,10 +314,30 @@ qsub %(extra args)s -t %(begin)d-%(end)d:%(step)d %(worker)s
             else:
                 raise BackendError, 'Cannot find SGE job id in: %s' % output
 
-            self.job_id = sge_jid
+            self.running_job_id = sge_jid
+            self.job_ids.append(sge_jid)
             return sge_jid
         finally:
             os.chdir(pwd)
+
+
+    def resubmit(self):
+        """
+        Resubmits the jobs
+        """
+        return self.submit_jobs(None, retry=True)
+
+
+    def stop(self):
+        """
+        Kills the job by executing 'qdel -j <job id>'
+        """
+        if self.is_job_running():
+            with open('/dev/null', 'w') as devnull:
+                cmd = 'qdel -j %d' % self.running_job_id
+                retcode = subprocess.call(cmd.split(),
+                                          stdout = devnull,
+                                          stderr = devnull)
 
 
     def job_preamble(self, **kws):
@@ -336,15 +370,21 @@ fi
         returns a generator over the files created by SGE to captures STDOUT
         """
 
-        if self.job_id is None:
-            raise BackendError, 'job id is None'
+        if self.running_job_id is not None:
+            raise BackendError, 'No job running'
 
-        pattern = '%(workarea)s/%(worker)s*%(jid)d.*' % {'workarea' : self.workarea,
-                                                         'worker'   : SGE.WORKER,
-                                                         'jid'      : self.job_id }
 
-        print 'Globbing for:', pattern
-        return glob.iglob(pattern)
+        globs = list()
+        for job_id in self.job_ids:
+
+            pattern = '%(workarea)s/%(worker)s*%(jid)d.*' % {'workarea' : self.workarea,
+                                                             'worker'   : SGE.WORKER,
+                                                             'jid'      : job_id }
+
+            print 'Globbing for:', pattern
+            globs.append(glob.iglob(pattern))
+
+        return lazy_concat(*globs)
 
 
     def result_lines(self):

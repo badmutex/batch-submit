@@ -53,6 +53,39 @@ def make_commands(cmd, datafile, chunksize):
 
 
 
+def maybe_kill_job(backend):
+    while True:
+        usr_input = raw_input('Job is still running. Kill it? [y/N]: ').lower()
+        if not usr_input:
+            kill = False
+            break
+        elif usr_input == 'y':
+            kill = True
+            break
+        else:
+            print 'Unknown choice:', usr_input
+
+    if kill:
+        jid     = backend.running_job_id
+        success = backend.stop()
+        print 'Killed SGE job', jid
+
+
+def maybe_resubmit_job(backend):
+    while True:
+        usr_input = raw_input('Resubmit job? [Y/n]: ').lower()
+        if not usr_input or usr_input == 'y':
+            resub = True
+            break
+        elif usr_input == 'n':
+            resub = False
+            break
+        else:
+            print 'Unknown choice', usr_input
+    if resub:
+        backend.resubmit()
+
+
 def main():
     opts = get_opts()
 
@@ -63,8 +96,17 @@ def main():
     commands = make_commands(opts.command, opts.datafile, opts.chunksize)
     backend.submit(commands)
     if opts.wait:
-        backend.wait(poll_interval=opts.poll,
-                     max_tries=opts.maxtries)
+
+        while True:
+            try:
+                backend.wait(poll_interval=opts.poll,
+                             max_tries=opts.maxtries)
+                break
+            except KeyboardInterrupt:
+                if backend.is_job_running():
+                    maybe_kill_job(backend)
+
+                maybe_resubmit_job(backend)
 
 
 if __name__ == '__main__':
