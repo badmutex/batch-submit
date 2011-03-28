@@ -70,6 +70,8 @@ def maybe_kill_job(backend):
         success = backend.stop()
         print 'Killed SGE job', jid
 
+    return kill
+
 
 def maybe_resubmit_job(backend):
     while True:
@@ -85,6 +87,7 @@ def maybe_resubmit_job(backend):
     if resub:
         backend.resubmit()
 
+    return resub
 
 def main():
     opts = get_opts()
@@ -106,7 +109,8 @@ def main():
                 if backend.is_job_running():
                     maybe_kill_job(backend)
 
-                maybe_resubmit_job(backend)
+                if not maybe_resubmit_job(backend):
+                    break
 
 
 if __name__ == '__main__':
