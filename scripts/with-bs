@@ -4,6 +4,7 @@ from optparse import OptionParser
 import batchsubmit as bs
 from pytools.tools import lazy_chunk
 import itertools
+from subprocess import CalledProcessError
 
 __SUPPORTED_BACKENDS = set(['SGE'])
 
@@ -97,7 +98,12 @@ def main():
                                environment=opts.goodenv)
 
     commands = make_commands(opts.command, opts.datafile, opts.chunksize)
-    backend.submit(commands)
+
+    try:
+        backend.submit(commands)
+    except CalledProcessError, e:
+        print 'Could not submit job:', e
+
     if opts.wait:
 
         while True:
