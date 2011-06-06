@@ -2,15 +2,12 @@
 import backend
 import sge
 from workqueue import WorkQueue, Task
-from workqueue import WORK_QUEUE_SCHEDULE_FCFS, WORK_QUEUE_SCHEDULE_FILES
+from workqueue import WORK_QUEUE_SCHEDULE_FCFS, WORK_QUEUE_SCHEDULE_FILES, WORK_QUEUE_WORKER_MODE_SHARED, WORK_QUEUE_MASTER_MODE_STANDALONE
 from workqueue import set_debug_flag
 
 import os
 
 set_debug_flag('all')
-
-
-WORKQUEUE_INIT_KWARGS = set('port name catalog exclusive'.split())
 
 
 class SGEWorkQueue(sge.SGE):
@@ -22,18 +19,20 @@ class SGEWorkQueue(sge.SGE):
 
     def __init__(self, *args, **kws):
 
+        port        = kws.pop('port', 9123)
         master_name = kws.pop('master_name', 'bs.sge.wq')
-        exclusive = kws.pop('exclusive', False)
-        wq_alg = kws.pop('wq_alg', WORK_QUEUE_SCHEDULE_FCFS)
+        catalog     = kws.pop('catalog', True)
+        exclusive   = kws.pop('exclusive', False)
+        wq_alg      = kws.pop('wq_alg', WORK_QUEUE_SCHEDULE_FCFS)
 
         backend.Backend.__init__(self, *args, **kws)
 
-        for k in kws.keys():
-            if k not in WORKQUEUE_INIT_KWARGS:
-                kws.pop(k)
-
-        self.workqueue = WorkQueue(name=master_name, **kws)
+        self.workqueue = WorkQueue(port=port,name=master_name, catalog=catalog, exclusive=exclusive)
         self.workqueue.specify_algorithm(wq_alg)
+
+        # self.workqueue.specify_master_mode(WORK_QUEUE_MASTER_MODE_STANDALONE)
+        self.workqueue.specify_worker_mode(WORK_QUEUE_WORKER_MODE_SHARED)
+
 
         
     def create_task(self, jobfile):
@@ -61,7 +60,6 @@ class SGEWorkQueue(sge.SGE):
 
         for job in jobfiles:
             task = self.create_task(job)
-            print 'Submitting', job
             self.workqueue.submit(task)
 
 
@@ -77,6 +75,8 @@ class SGEWorkQueue(sge.SGE):
                             Default = 1m
           *max_tries*     : number of iterations to wait before giving up.
                             Default = infinity
+
+        Returns: Boolean indicating if any task failed
         """
 
         poll_interval = kws.get('poll_interval', '1m')
@@ -95,7 +95,6 @@ class SGEWorkQueue(sge.SGE):
                 break
 
             task   = self.workqueue.wait(sleeptime)
-            tries += 1
 
             print '\tinit:', self.workqueue.stats.workers_init
             print '\tready:', self.workqueue.stats.workers_ready
@@ -104,7 +103,28 @@ class SGEWorkQueue(sge.SGE):
             print '\twaiting:', self.workqueue.stats.tasks_waiting
             print '\tcomplete:', self.workqueue.stats.tasks_complete
 
-            # self.print_wq_stats()
             if task:
                 print 'Job %s finished with %s' % (task.tag, task.return_status)
+                print 'JOB OUTPUT: %s ==================================================' % task.tag
+                print task.output
+                print '=================================================='
                 success = success and task.return_status == 0
+
+                if not task.return_status == 0:
+                    self.workqueue.submit(task)
+                    tries += 1
+
+        return success
+
+
+    def job_preamble(self, **kws):
+        return '#!/usr/bin/env bash'
+
+    def job_conclusion(self, **kws):
+        return """\
+if [ $? -eq 0 ]; then
+    echo DONE
+else
+    echo FAILURE
+fi
+"""
