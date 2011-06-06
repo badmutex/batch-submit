@@ -7,8 +7,6 @@ from workqueue import set_debug_flag
 
 import os
 
-set_debug_flag('all')
-
 
 class SGEWorkQueue(sge.SGE):
     """
@@ -20,10 +18,13 @@ class SGEWorkQueue(sge.SGE):
     def __init__(self, *args, **kws):
 
         port        = kws.pop('port', 9123)
-        master_name = kws.pop('master_name', 'bs.sge.wq')
+        master_name = kws.pop('name', 'bs.sge.wq')
         catalog     = kws.pop('catalog', True)
         exclusive   = kws.pop('exclusive', False)
         wq_alg      = kws.pop('wq_alg', WORK_QUEUE_SCHEDULE_FCFS)
+
+        wq_debug    = kws.pop('ccl_debug', 'all')
+        set_debug_flag(wq_debug)
 
         backend.Backend.__init__(self, *args, **kws)
 
@@ -105,9 +106,9 @@ class SGEWorkQueue(sge.SGE):
 
             if task:
                 print 'Job %s finished with %s' % (task.tag, task.return_status)
-                print 'JOB OUTPUT: %s ==================================================' % task.tag
-                print task.output
-                print '=================================================='
+                print '++++++++++++++++++++++++++++++', 'JOB OUTPUT: %s' % task.tag, '++++++++++++++++++++++++++++++'
+                print task.output.strip()
+                print '================================================================================'
                 success = success and task.return_status == 0
 
                 if not task.return_status == 0:

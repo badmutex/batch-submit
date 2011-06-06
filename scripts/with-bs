@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from optparse import OptionParser
+from optparse import OptionParser, Values
 import batchsubmit
 from pytools.tools import lazy_chunk
 import itertools
@@ -27,7 +27,18 @@ def get_opts():
     p.add_option('-W','--wait',dest='wait',action='store_true',help='Wait for the batch job to complete before exiting')
 
 
+    # wq parameters
+    p.add_option('--wq-port', dest='wq_port', type=int, default=None)
+    p.add_option('--wq-name', dest='wq_name', default=None)
+    p.add_option('--wq-nocatalog', dest='wq_catalog', action='store_false', default=True)
+    p.add_option('--wq-exclusive', dest='wq_exclusive', action='store_true', default=False)
+    p.add_option('--wq-wqalgorithm', dest='wq_wqalgorithm', default='WORK_QUEUE_SCHEDULE_FCFS',
+                 help='[WORK_QUEUE_SCHEDULE_FCFS]')
+    p.add_option('--wq_debug', dest='wq_debug', default='none')
+
+
     opts, args    = p.parse_args()
+
 
     if opts.backend not in __SUPPORTED_BACKENDS:
         p.error('Unsupported backend: %s' % opts.backend)
@@ -46,6 +57,9 @@ def get_opts():
         opts.command  = args[1:]
     except KeyError:
         opts.command  = ''
+
+
+    print opts
 
     return opts
 
@@ -97,10 +111,26 @@ def maybe_resubmit_job(backend):
 def main():
     opts = get_opts()
 
-    backend = {'SGE' : batchsubmit.SGE,
-               'SGEWQ' : batchsubmit.SGEWorkQueue
-               }[opts.backend](withenv=opts.withenv,
-                               environment=opts.goodenv)
+    backend_const = {'SGE' : batchsubmit.SGE,
+                     'SGEWQ' : batchsubmit.SGEWorkQueue
+                     }[opts.backend]
+
+    constructor_opts = dict()
+    constructor_opts['withenv'] = opts.withenv
+    constructor_opts['environment'] = opts.goodenv
+
+    if opts.backend in ['SGEWQ']:
+        if opts.wq_port is not None: constructor_opts['port'] = opts.wq_port
+        if opts.wq_name is not None: constructor_opts['name'] = opts.wq_name
+        constructor_opts['catalog'] = opts.wq_catalog
+
+        import workqueue
+        alg = getattr(workqueue, opts.wq_wqalgorithm)
+        constructor_opts['wq_alg'] = alg
+
+        constructor_opts['ccl_debug'] = opts.wq_debug
+
+    backend = backend_const(**constructor_opts)
 
     commands = make_commands(opts.command, opts.datafile, opts.chunksize)
 
