@@ -26,3 +26,14 @@ In bash::
     EOF
 
     $ with-bs -W -P 2s /tmp/test.in echo
+
+Using the WorkQueue backend for SGE::
+
+	$ cat <<EOF>/tmp/test.dat
+	hello
+	world
+	EOF
+
+	$ with-bs -b SGEWQ -W /tmp/test.dat echo
+
+  There are also options to set the WQ port, project name, catalog, exclusivity, algorithm, and debug configurations
