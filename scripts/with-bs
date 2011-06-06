@@ -32,7 +32,7 @@ def get_opts():
     if opts.backend not in __SUPPORTED_BACKENDS:
         p.error('Unsupported backend: %s' % opts.backend)
 
-    if len(args) < 2:
+    if len(args) < 1:
         p.error('Did you forget the <data file> and <command> ?')
 
     if \
@@ -41,7 +41,11 @@ def get_opts():
         p.error('I need both --withenv and --goodenv')
 
     opts.datafile = args[0]
-    opts.command  = args[1:]
+
+    try:
+        opts.command  = args[1:]
+    except KeyError:
+        opts.command  = ''
 
     return opts
 
