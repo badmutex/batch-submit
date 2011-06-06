@@ -6,7 +6,7 @@ from pytools.tools import lazy_chunk
 import itertools
 from subprocess import CalledProcessError
 
-__SUPPORTED_BACKENDS = set(['SGE'])
+__SUPPORTED_BACKENDS = set(['SGE', 'SGEWQ'])
 
 
 def get_opts():
@@ -14,7 +14,7 @@ def get_opts():
 
     p = OptionParser(usage=usage)
 
-    p.add_option('-b','--backend',dest='backend',default='SGE',help='Specify which backend to use [SGE]')
+    p.add_option('-b','--backend',dest='backend',default='SGE',help='Specify which backend to use [%s]' % '|'.join(__SUPPORTED_BACKENDS))
     p.add_option('-w','--with-env',dest='withenv',default=None,help='Environment wrapper [None]')
     p.add_option('-e','--good-env',dest='goodenv',default=None,help='Environment to source [None]')
     p.add_option('-c','--chunksize',dest='chunksize',type=int,default=1,help='Chunksize [1]')
@@ -93,7 +93,8 @@ def maybe_resubmit_job(backend):
 def main():
     opts = get_opts()
 
-    backend = {'SGE' : batchsubmit.SGE
+    backend = {'SGE' : batchsubmit.SGE,
+               'SGEWQ' : batchsubmit.SGEWorkQueue
                }[opts.backend](withenv=opts.withenv,
                                environment=opts.goodenv)
 

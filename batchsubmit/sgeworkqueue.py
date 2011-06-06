@@ -3,9 +3,14 @@ import backend
 import sge
 from workqueue import WorkQueue, Task
 from workqueue import WORK_QUEUE_SCHEDULE_FCFS, WORK_QUEUE_SCHEDULE_FILES
+from workqueue import set_debug_flag
 
 import os
 
+set_debug_flag('all')
+
+
+WORKQUEUE_INIT_KWARGS = set('port name catalog exclusive'.split())
 
 
 class SGEWorkQueue(sge.SGE):
@@ -17,13 +22,17 @@ class SGEWorkQueue(sge.SGE):
 
     def __init__(self, *args, **kws):
 
-        port = kws.pop('port', 9123)
         master_name = kws.pop('master_name', 'bs.sge.wq')
+        exclusive = kws.pop('exclusive', False)
         wq_alg = kws.pop('wq_alg', WORK_QUEUE_SCHEDULE_FCFS)
 
         backend.Backend.__init__(self, *args, **kws)
 
-        self.workqueue = WorkQueue(port, name=master_name, **kws)
+        for k in kws.keys():
+            if k not in WORKQUEUE_INIT_KWARGS:
+                kws.pop(k)
+
+        self.workqueue = WorkQueue(name=master_name, **kws)
         self.workqueue.specify_algorithm(wq_alg)
 
         
@@ -34,9 +43,9 @@ class SGEWorkQueue(sge.SGE):
 
         job = os.path.basename(jobfile)
 
-        cmd = 'cd %(workarea)s;./%(jobfile)s' % {
-            'workarea' : self.workarea,
-            'jobfile'  : job }
+        cmd = '%(jobfile)s' % {
+            # 'workarea' : self.workarea,
+            'jobfile'  : jobfile }
 
         print 'Task Command:', cmd
 
@@ -66,19 +75,27 @@ class SGEWorkQueue(sge.SGE):
           *poll_interval* : how long to wait between tries. Format: <time><units> where <units>
                             can be one of s, m, h, d, w for seconds, minutes, hours, days, weeks respectively
                             Default = 1m
+          *max_tries*     : number of iterations to wait before giving up.
+                            Default = infinity
         """
 
         poll_interval = kws.get('poll_interval', '1m')
+        max_tries     = kws.get('max_tries', float('inf'))
 
         sleeptime     = self.parse_time_units(poll_interval)
+
+        tries         = 0
 
         success = True
 
         while True:
             if not self.is_job_running():
                 break
+            if tries > max_tries:
+                break
 
-            task = self.workqueue.wait(sleeptime)
+            task   = self.workqueue.wait(sleeptime)
+            tries += 1
 
             print '\tinit:', self.workqueue.stats.workers_init
             print '\tready:', self.workqueue.stats.workers_ready
